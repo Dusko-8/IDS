@@ -40,7 +40,7 @@ CREATE TABLE PRISTAV (
     /*Attributes*/
     Lokalita VARCHAR(250) NOT NULL,
     Kapacita INT NOT NULL,
-    Nazov_poloostrova VARCHAR(250) NOT NULL
+    Nazov_poloostrova VARCHAR(150) NOT NULL
 );
 CREATE TABLE BITKA (
     /*PK*/
@@ -49,7 +49,7 @@ CREATE TABLE BITKA (
     ID_pristavu INT REFERENCES PRISTAV(ID_pristavu),
     /*Attributes*/
     Pocet_strat INT NOT NULL,
-    Miesto_odohrania VARCHAR(50) NOT NULL
+    Miesto_odohrania VARCHAR(150) NOT NULL
 );
 CREATE TABLE ALIANCIA (
     /*PK*/
@@ -72,8 +72,14 @@ CREATE TABLE PIRAT (
     Prezyvka VARCHAR(50) NOT NULL,
     Pozicia VARCHAR(50) NOT NULL,
     Farba_brady VARCHAR(50) NOT NULL,
+        CHECK ( Farba_brady IN ('Čierna', 'Červená', 'Ryšavá','Blond','Hnedá','Šedivá', 'Biela')),
     Vek INT NOT NULL
 );
+
+
+/*KAPITAN is a special type of PIRAT, connection is based on shared primary key. This solution is reducing data
+  redundancy of attributes which PIRAT and KAPITAN are sharing.
+*/
 CREATE TABLE KAPITAN (
      ID_pirata UNIQUE,
     /*FK*/
@@ -90,8 +96,6 @@ CREATE TABLE FLOTILA (
     /*Attributes*/
 );
 
-
-
 CREATE TABLE LOD (
     /*PK*/
     ID_lode INT GENERATED AS IDENTITY NOT NULL PRIMARY KEY,
@@ -102,6 +106,7 @@ CREATE TABLE LOD (
     ID_pristavu INT REFERENCES PRISTAV(ID_pristavu),
     /*Attributes*/
     Typ_lode VARCHAR(50) NOT NULL,
+        CHECK ( Typ_lode IN ('Fregata', 'Korzár','Barka','Galey','Šalupa','Brigantína','Fluyta')),
     Kapacita INT NOT NULL
 );
 /*junction tables*/
@@ -162,13 +167,13 @@ VALUES ('čierna s kosťami a lebkou');
 
 --pristav
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
-values (1,'Brno',4,'Madagaskar');
+values (1,'Afrika',4,'Madagaskar');
 
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
-values (1,'Praha',4,'Grecko');
+values (1,'Grecko',4,'Kreta');
 
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
-values (1,'Kosice',5,'Bratislava');
+values (1,'Dunaj',5,'Bratislava');
 
 --bitka
 insert into BITKA (ID_pristavu, Pocet_strat, Miesto_odohrania)
@@ -198,7 +203,7 @@ INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady
 VALUES(1, '880601/4321', 'Hector', 'Barbossa', 'Kapitán', 'Biela', 60);
 
 INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady, Vek)
-VALUES(1, '940504/2468', 'Will', 'Turner', 'Upratovac', 'Žltá', 30);
+VALUES(1, '940504/2468', 'Will', 'Turner', 'Upratovač', 'Blond', 30);
 
 --kapitan
 INSERT INTO KAPITAN(ID_pirata, Roky_praxe)
@@ -214,17 +219,17 @@ VALUES(3,4);
 INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
 VALUES(1,1);
 INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
-VALUES(1,1);
+VALUES(1,2);
 INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
-VALUES(1,1);
+VALUES(2,1);
 
 --lod
 INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (1,1,1,1,'Pltka',15);
+VALUES (1,1,1,1,'Barka',15);
 INSERT INTO LOD (ID_flotily, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (1,1,1,'Velka lod',15);
+VALUES (1,1,1,'Korzár',40);
 INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (1,2,1,1,'Mala lod',15);
+VALUES (1,2,1,1,'Fregata',20);
 
 --aliancie v bitke
 INSERT INTO ALIANCIE_V_BITKE (ID_aliancie, ID_bitky)
