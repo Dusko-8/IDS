@@ -1,5 +1,5 @@
 /*Clear environment*/
-/*
+
 drop table POSADKY_V_ALIANCII;
 drop table PIRATSKE_CHARAKTERISTIKY;
 drop table ALIANCIE_V_BITKE;
@@ -13,7 +13,7 @@ drop table  PRISTAV;
 drop table  POSADKA;
 drop table  CHARAKTERISTIKY;
 drop sequence ID_POSADKY_seq;
-*/
+
 /*Table POSADKA is using required automatic sequence(starting 1000) combined with manual sequence*/
 /*Tables*/
 CREATE TABLE CHARAKTERISTIKY (
@@ -170,7 +170,7 @@ INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrov
 values (1,'Afrika',4,'Madagaskar');
 
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
-values (1,'Grecko',4,'Kreta');
+values (2,'Grecko',4,'Kreta');
 
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
 values (1,'Dunaj',5,'Bratislava');
@@ -200,10 +200,19 @@ INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady
 VALUES(1, '930101/1234', 'Jack', 'Sparrow', 'Kapitán', 'Čierna', 45);
 
 INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady, Vek)
-VALUES(1, '880601/4321', 'Hector', 'Barbossa', 'Kapitán', 'Biela', 60);
+VALUES(2, '880601/4321', 'Hector', 'Barbossa', 'Kapitán', 'Biela', 60);
 
 INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady, Vek)
 VALUES(1, '940504/2468', 'Will', 'Turner', 'Upratovač', 'Blond', 30);
+
+INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady, Vek)
+VALUES(1000, '940555/2468', 'Phil', 'Sailor', 'Kapitán', 'Ryšavá', 43);
+
+INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady, Vek)
+VALUES(1000, '940804/2468', 'Robo', 'Morský vlk', 'Kormidelník', 'Čierna', 34);
+
+INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady, Vek)
+VALUES(1, '640504/2468', 'Henry', 'Čiernofúz', 'Strelec', 'Biela', 20);
 
 --kapitan
 INSERT INTO KAPITAN(ID_pirata, Roky_praxe)
@@ -227,9 +236,9 @@ VALUES(2,1);
 INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
 VALUES (1,1,1,1,'Barka',15);
 INSERT INTO LOD (ID_flotily, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (1,1,1,'Korzár',40);
+VALUES (2,1,1,'Korzár',40);
 INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (1,2,1,1,'Fregata',20);
+VALUES (1,2,1,2,'Fregata',20);
 
 --aliancie v bitke
 INSERT INTO ALIANCIE_V_BITKE (ID_aliancie, ID_bitky)
@@ -237,9 +246,11 @@ VALUES (1,1);
 INSERT INTO ALIANCIE_V_BITKE (ID_aliancie, ID_bitky)
 VALUES (1,2);
 INSERT INTO ALIANCIE_V_BITKE (ID_aliancie, ID_bitky)
-VALUES (2,1);
+VALUES (2,3);
+INSERT INTO ALIANCIE_V_BITKE (ID_aliancie, ID_bitky)
+VALUES (1,3);
 
---aliancie v bitke
+--piratske charakteristiky
 INSERT INTO PIRATSKE_CHARAKTERISTIKY(ID_charakteristiky, ID_pirata)
 VALUES (1,1);
 INSERT INTO PIRATSKE_CHARAKTERISTIKY(ID_charakteristiky, ID_pirata)
@@ -254,4 +265,52 @@ INSERT INTO POSADKY_V_ALIANCII(ID_posadky, ID_aliancie)
 VALUES (1,2);
 INSERT INTO POSADKY_V_ALIANCII(ID_posadky, ID_aliancie)
 VALUES (2,1);
+INSERT INTO POSADKY_V_ALIANCII(ID_posadky, ID_aliancie)
+VALUES (1000,2);
 
+
+
+/*Selecting data from database*/
+
+/* 1. Which ships are currently anchored in port on Madagaskar ?*/
+SELECT LOD.ID_lode,LOD.Typ_lode
+FROM LOD JOIN PRISTAV on LOD.ID_pristavu = PRISTAV.ID_pristavu
+WHERE PRISTAV.Nazov_poloostrova = 'Madagaskar';
+
+/*2. Territory of which crew are ports ?*/
+SELECT PRISTAV.Nazov_poloostrova, POSADKA.ID_posadky, POSADKA.Jolly_roger
+FROM PRISTAV JOIN POSADKA on PRISTAV.ID_teritorium_posadky = POSADKA.ID_posadky;
+
+/*3. Which pirates are in  guild alliance*/
+SELECT PIRAT.Meno, PIRAT.Prezyvka
+FROM PIRAT JOIN POSADKY_V_ALIANCII on PIRAT.ID_posadka = POSADKY_V_ALIANCII.ID_posadky
+JOIN ALIANCIA on POSADKY_V_ALIANCII.ID_aliancie = ALIANCIA.ID_aliancie
+WHERE ALIANCIA.Nazov = 'Cool Guild';
+
+/*4. What is average age of pirates in crews */
+SELECT  POSADKA.ID_posadky, AVG(PIRAT.Vek) AS "Average age"
+FROM POSADKA JOIN PIRAT on POSADKA.ID_posadky = PIRAT.ID_posadka
+GROUP BY POSADKA.ID_posadky;
+
+/*5. How many ships are in fleets */
+SELECT FLOTILA.ID_Flotily, COUNT(LOD.ID_Lode) AS "Number of ships"
+FROM FLOTILA JOIN LOD on FLOTILA.ID_flotily = LOD.ID_flotily
+GROUP BY FLOTILA.ID_Flotily;
+
+/*6. Which pirates have eye patch as a characteristic */
+SELECT PIRAT.Meno, PIRAT.Prezyvka
+FROM PIRAT
+WHERE EXISTS(
+    SELECT CHARAKTERISTIKY.Nazov FROM CHARAKTERISTIKY
+    JOIN PIRATSKE_CHARAKTERISTIKY on CHARAKTERISTIKY.ID_charakteristiky = PIRATSKE_CHARAKTERISTIKY.ID_charakteristiky
+    WHERE PIRAT.ID_pirata = PIRATSKE_CHARAKTERISTIKY.ID_pirata
+    AND CHARAKTERISTIKY.Nazov = 'Páska cez oko');
+
+/*7. Which crews were in battles, where number of casualties was greater then 100 */
+SELECT * FROM POSADKA
+WHERE POSADKA.ID_posadky IN (
+    SELECT POSADKY_V_ALIANCII.ID_posadky FROM POSADKY_V_ALIANCII
+    JOIN ALIANCIE_V_BITKE on POSADKY_V_ALIANCII.ID_aliancie = ALIANCIE_V_BITKE.ID_aliancie
+    JOIN BITKA on ALIANCIE_V_BITKE.ID_bitky = BITKA.ID_bitky
+    WHERE BITKA.Pocet_strat > 100
+    );
