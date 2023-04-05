@@ -1,6 +1,6 @@
 /*Clear environment*/
 
-drop table POSADKY_V_ALIANCII;
+/*drop table POSADKY_V_ALIANCII;
 drop table PIRATSKE_CHARAKTERISTIKY;
 drop table ALIANCIE_V_BITKE;
 drop table  LOD;
@@ -12,7 +12,7 @@ drop table  BITKA;
 drop table  PRISTAV;
 drop table  POSADKA;
 drop table  CHARAKTERISTIKY;
-drop sequence ID_POSADKY_seq;
+drop sequence ID_POSADKY_seq;*
 
 /*Table POSADKA is using required automatic sequence(starting 1000) combined with manual sequence*/
 /*Tables*/
@@ -81,7 +81,8 @@ CREATE TABLE PIRAT (
   redundancy of attributes which PIRAT and KAPITAN are sharing.
 */
 CREATE TABLE KAPITAN (
-     ID_pirata UNIQUE,
+    /*PK*/
+    ID_pirata INT GENERATED AS IDENTITY NOT NULL PRIMARY KEY,
     /*FK*/
     FOREIGN KEY (ID_pirata) REFERENCES  PIRAT (ID_pirata),
     /*Attributes*/
@@ -215,14 +216,14 @@ INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Pozicia, Farba_brady
 VALUES(1, '640504/2468', 'Henry', 'Čiernofúz', 'Strelec', 'Biela', 20);
 
 --kapitan
-INSERT INTO KAPITAN(ID_pirata, Roky_praxe)
-VALUES(1,5);
+INSERT INTO KAPITAN(Roky_praxe)
+VALUES(5);
 
-INSERT INTO KAPITAN(ID_pirata, Roky_praxe)
-VALUES(2,4);
+INSERT INTO KAPITAN(Roky_praxe)
+VALUES(4);
 
-INSERT INTO KAPITAN(ID_pirata, Roky_praxe)
-VALUES(3,4);
+INSERT INTO KAPITAN(Roky_praxe)
+VALUES(4);
 
 --flotila
 INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
@@ -281,7 +282,7 @@ WHERE PRISTAV.Nazov_poloostrova = 'Madagaskar';
 SELECT PRISTAV.Nazov_poloostrova, POSADKA.ID_posadky, POSADKA.Jolly_roger
 FROM PRISTAV JOIN POSADKA on PRISTAV.ID_teritorium_posadky = POSADKA.ID_posadky;
 
-/*3. Which pirates are in  guild alliance*/
+/*3. Which pirates are in Cool Guild guild alliance*/
 SELECT PIRAT.Meno, PIRAT.Prezyvka
 FROM PIRAT JOIN POSADKY_V_ALIANCII on PIRAT.ID_posadka = POSADKY_V_ALIANCII.ID_posadky
 JOIN ALIANCIA on POSADKY_V_ALIANCII.ID_aliancie = ALIANCIA.ID_aliancie
@@ -291,6 +292,8 @@ WHERE ALIANCIA.Nazov = 'Cool Guild';
 SELECT  POSADKA.ID_posadky, AVG(PIRAT.Vek) AS "Average age"
 FROM POSADKA JOIN PIRAT on POSADKA.ID_posadky = PIRAT.ID_posadka
 GROUP BY POSADKA.ID_posadky;
+
+SELECT * FROM KAPITAN;
 
 /*5. How many ships are in fleets */
 SELECT FLOTILA.ID_Flotily, COUNT(LOD.ID_Lode) AS "Number of ships"
