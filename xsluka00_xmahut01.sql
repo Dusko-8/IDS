@@ -1,6 +1,5 @@
 /*Clear environment*/
-
-/*drop table POSADKY_V_ALIANCII;
+drop table POSADKY_V_ALIANCII;
 drop table PIRATSKE_CHARAKTERISTIKY;
 drop table ALIANCIE_V_BITKE;
 drop table  LOD;
@@ -12,7 +11,8 @@ drop table  BITKA;
 drop table  PRISTAV;
 drop table  POSADKA;
 drop table  CHARAKTERISTIKY;
-drop sequence ID_POSADKY_seq;*
+drop sequence ID_POSADKY_seq;
+/*drop materialized view PIRAT_DETAILS_BY_POSADKA;*/
 
 /*Table POSADKA is using required automatic sequence(starting 1000) combined with manual sequence*/
 /*Tables*/
@@ -70,7 +70,7 @@ CREATE TABLE PIRAT (
     CHECK (REGEXP_LIKE(rodne_cislo ,'^[0-9]{6}/[0-9]{4}$')),
     Meno VARCHAR(50) NOT NULL,
     Prezyvka VARCHAR(50) NOT NULL,
-    Pozicia VARCHAR(50) NOT NULL,
+    Pozicia VARCHAR(50),
     Farba_brady VARCHAR(50) NOT NULL,
         CHECK ( Farba_brady IN ('Čierna', 'Červená', 'Ryšavá','Blond','Hnedá','Šedivá', 'Biela')),
     Vek INT NOT NULL
@@ -105,6 +105,7 @@ CREATE TABLE LOD (
     ID_bitky INT REFERENCES BITKA(ID_bitky),
     ID_div_kapitana INT REFERENCES KAPITAN(ID_PIRATA),
     ID_pristavu INT REFERENCES PRISTAV(ID_pristavu),
+    ID_Posadka INT REFERENCES POSADKA(ID_posadky),
     /*Attributes*/
     Typ_lode VARCHAR(50) NOT NULL,
         CHECK ( Typ_lode IN ('Fregata', 'Korzár','Barka','Galey','Šalupa','Brigantína','Fluyta')),
@@ -168,23 +169,23 @@ VALUES ('čierna s kosťami a lebkou');
 
 --pristav
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
-values (1,'Afrika',4,'Madagaskar');
+values (1,'Afrika',10,'Madagaskar');
 
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
-values (2,'Grecko',4,'Kreta');
+values (2,'Grecko',12,'Kreta');
 
 INSERT INTO PRISTAV (ID_teritorium_posadky, Lokalita, Kapacita, Nazov_poloostrova)
-values (1,'Dunaj',5,'Bratislava');
+values (1,'Dunaj',25,'Bratislava');
 
 --bitka
 insert into BITKA (ID_pristavu, Pocet_strat, Miesto_odohrania)
-values (1,50,'Bratislava');
+values (1,53,'Bratislava');
 
 insert into BITKA (ID_pristavu, Pocet_strat, Miesto_odohrania)
-values (2,50,'Kosice');
+values (2,56,'Kosice');
 
 insert into BITKA (ID_pristavu, Pocet_strat, Miesto_odohrania)
-values (1,150,'Bratislava');
+values (1,154,'Bratislava');
 
 --aliancia
 insert into ALIANCIA (ID_pristavu, Nazov)
@@ -232,14 +233,16 @@ INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
 VALUES(1,2);
 INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
 VALUES(2,1);
+INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
+VALUES(1000,4);
 
 --lod
-INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (1,1,1,1,'Barka',15);
-INSERT INTO LOD (ID_flotily, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (2,1,1,'Korzár',40);
-INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu, Typ_lode, Kapacita)
-VALUES (1,2,1,2,'Fregata',20);
+INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu,ID_Posadka, Typ_lode, Kapacita)
+VALUES (1,1,1,1,1,'Barka',15);
+INSERT INTO LOD (ID_flotily, ID_div_kapitana, ID_pristavu,ID_Posadka, Typ_lode, Kapacita)
+VALUES (2,1,1,2,'Korzár',40);
+INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu, ID_Posadka,Typ_lode, Kapacita)
+VALUES (1,2,1,2,1000,'Fregata',20);
 
 --aliancie v bitke
 INSERT INTO ALIANCIE_V_BITKE (ID_aliancie, ID_bitky)
@@ -270,6 +273,114 @@ INSERT INTO POSADKY_V_ALIANCII(ID_posadky, ID_aliancie)
 VALUES (1000,2);
 
 
+/*Triggers*/
+CREATE OR REPLACE TRIGGER PIRAT_POZ
+    BEFORE INSERT ON PIRAT
+    FOR EACH ROW
+BEGIN
+    IF :NEW.Pozicia IS NULL THEN
+        :NEW.Pozicia := 'upratovač';
+    END IF;
+END;
+
+CREATE OR REPLACE TRIGGER DELETE_FLOTILA
+    FOR DELETE ON LOD
+    COMPOUND TRIGGER
+
+    TYPE t_flotila_ids IS TABLE OF FLOTILA.ID_flotily%TYPE INDEX BY PLS_INTEGER;
+    v_flotila_ids t_flotila_ids;
+
+    AFTER EACH ROW IS
+    BEGIN
+        v_flotila_ids(v_flotila_ids.COUNT + 1) := :OLD.ID_flotily;
+    END AFTER EACH ROW;
+
+    AFTER STATEMENT IS
+        ship_count NUMBER;
+    BEGIN
+        FOR i IN v_flotila_ids.FIRST .. v_flotila_ids.LAST LOOP
+            SELECT COUNT(*) INTO ship_count
+            FROM LOD
+            WHERE ID_flotily = v_flotila_ids(i);
+            IF ship_count = 0 THEN
+                DELETE FROM FLOTILA WHERE ID_flotily = v_flotila_ids(i);
+            END IF;
+        END LOOP;
+    END AFTER STATEMENT;
+END;
+
+
+/*Procedure*/
+CREATE OR REPLACE PROCEDURE CREW_INFO (pro_id_posadka IN POSADKA.ID_posadky%TYPE)
+AS
+    CURSOR CURSOR_CREW IS
+        SELECT POSADKA.ID_posadky, POSADKA.Jolly_roger, SUM(Kapacita) AS SHIP_CAPA,
+               AVG(Vek) AS PIRATE_AGE
+        FROM POSADKA JOIN LOD ON POSADKA.ID_posadky = LOD.ID_Posadka
+        JOIN PIRAT ON POSADKA.ID_posadky = PIRAT.ID_posadka
+        WHERE POSADKA.ID_posadky = pro_id_posadka
+        GROUP BY POSADKA.ID_posadky, POSADKA.Jolly_roger;
+    CREW_DATA CURSOR_CREW%ROWTYPE;
+BEGIN
+    OPEN CURSOR_CREW;
+    FETCH CURSOR_CREW INTO CREW_DATA;
+    CLOSE CURSOR_CREW;
+    IF CREW_DATA.ID_posadky IS NULL THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Crew ID does not exists');
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('ID Crew: ' || CREW_DATA.ID_posadky);
+        DBMS_OUTPUT.PUT_LINE('Jolly Rogger: ' || CREW_DATA.Jolly_roger);
+        DBMS_OUTPUT.PUT_LINE('Capacity of ships: ' || CREW_DATA.SHIP_CAPA);
+        DBMS_OUTPUT.PUT_LINE('Average age of pirates: '|| CREW_DATA.PIRATE_AGE);
+    END IF;
+END;
+
+CREATE OR REPLACE PROCEDURE CAPACITY_UPDATE(
+    pro_aliance_id IN ALIANCIA.ID_aliancie%TYPE,
+    pro_bitka_id IN BITKA.ID_bitky%TYPE
+)AS
+    current_capacity PRISTAV.Kapacita%TYPE;
+    new_capacity PRISTAV.Kapacita%TYPE;
+    pristav_id PRISTAV.ID_pristavu%TYPE;
+    casualties BITKA.Pocet_strat%TYPE;
+    aliance_exists NUMBER;
+    bitka_exists NUMBER;
+BEGIN
+    -- Check if specified aliance exists
+    SELECT COUNT(*) INTO aliance_exists FROM ALIANCIA WHERE ID_aliancie = pro_aliance_id;
+    IF aliance_exists = 0 THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Aliance ID does not exist');
+    END IF;
+
+    -- Check if specified bitka exists
+    SELECT COUNT(*) INTO bitka_exists FROM BITKA WHERE ID_bitky = pro_bitka_id;
+    IF bitka_exists = 0 THEN
+        RAISE_APPLICATION_ERROR(-20003, 'Battle ID does not exist');
+    ELSE
+        SELECT Pocet_strat INTO casualties FROM BITKA WHERE ID_bitky = pro_bitka_id;
+        casualties := MOD(casualties,5);
+    END IF;
+
+    -- Get current capacity and check if reduction is valid
+    SELECT PRISTAV.Kapacita,PRISTAV.ID_pristavu INTO current_capacity, pristav_id FROM PRISTAV
+        JOIN BITKA on PRISTAV.ID_pristavu = BITKA.ID_pristavu WHERE ID_bitky = pro_bitka_id;
+    new_capacity := current_capacity - casualties;
+    IF new_capacity < 0 THEN
+        RAISE_APPLICATION_ERROR(-20003, 'Capacity reduction would result in negative capacity for the pristav');
+    END IF;
+
+    -- Update capacity of specified pristav
+    UPDATE PRISTAV SET Kapacita = new_capacity WHERE ID_pristavu = pristav_id;
+
+    -- Update territory of specified aliance to pristav's
+    UPDATE ALIANCIA SET ID_pristavu = pristav_id WHERE ID_aliancie = pro_aliance_id;
+
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
+END;
 
 /*Selecting data from database*/
 
@@ -293,8 +404,6 @@ SELECT  POSADKA.ID_posadky, AVG(PIRAT.Vek) AS "Average age"
 FROM POSADKA JOIN PIRAT on POSADKA.ID_posadky = PIRAT.ID_posadka
 GROUP BY POSADKA.ID_posadky;
 
-SELECT * FROM KAPITAN;
-
 /*5. How many ships are in fleets */
 SELECT FLOTILA.ID_Flotily, COUNT(LOD.ID_Lode) AS "Number of ships"
 FROM FLOTILA JOIN LOD on FLOTILA.ID_flotily = LOD.ID_flotily
@@ -317,3 +426,84 @@ WHERE POSADKA.ID_posadky IN (
     JOIN BITKA on ALIANCIE_V_BITKE.ID_bitky = BITKA.ID_bitky
     WHERE BITKA.Pocet_strat > 100
     );
+
+/**/
+WITH lod_info AS (
+SELECT l.ID_lode,l.Typ_lode,
+CASE
+    WHEN l.Kapacita < 20 THEN 'Small'
+    WHEN l.Kapacita >= 20 AND l.Kapacita < 50 THEN 'Medium'
+    ELSE 'Large'
+END AS size_category,f.ID_flotily
+FROM LOD l LEFT JOIN FLOTILA f ON l.ID_flotily = f.ID_flotily)
+
+SELECT li.ID_lode,li.Typ_lode,li.size_category,li.ID_flotily
+FROM lod_info li;
+
+/*Trigger 1 - adding a pirate without position*/
+INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Farba_brady, Vek)
+VALUES(1000, '930101/1234', 'Rudo', 'Sedivy', 'Čierna', 20);
+
+/*Trigger 2 - deleting only ship in fleet -> fleet is deleted too*/
+INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
+VALUES(1000,1);
+SELECT * FROM FLOTILA;
+INSERT INTO LOD (ID_flotily, ID_bitky, ID_div_kapitana, ID_pristavu,ID_Posadka, Typ_lode, Kapacita)
+VALUES (5,2,1,1,1000,'Barka',17);
+DELETE FROM LOD WHERE KAPACITA = 17;
+SELECT * FROM FLOTILA;
+
+/*Crew info*/
+CALL CREW_INFO(1);
+
+/*Capacity update of port*/
+CALL CAPACITY_UPDATE(1,1);
+
+EXPLAIN PLAN FOR SELECT Nazov_poloostrova, COUNT(*)
+FROM PRISTAV JOIN LOD on PRISTAV.ID_pristavu = LOD.ID_pristavu
+GROUP BY Nazov_poloostrova
+ORDER BY Nazov_poloostrova DESC;
+
+SELECT * from table(dbms_xplan.display());
+
+CREATE INDEX ix_polo ON LOD(ID_pristavu);
+
+EXPLAIN PLAN FOR SELECT Nazov_poloostrova, COUNT(*)
+FROM PRISTAV JOIN LOD on PRISTAV.ID_pristavu = LOD.ID_pristavu
+GROUP BY Nazov_poloostrova
+ORDER BY Nazov_poloostrova DESC;
+
+SELECT * from table(dbms_xplan.display());
+
+GRANT ALL ON ALIANCIA TO XSLUKA00;
+GRANT ALL ON ALIANCIE_V_BITKE TO XSLUKA00;
+GRANT ALL ON BITKA TO XSLUKA00;
+GRANT ALL ON CHARAKTERISTIKY TO XSLUKA00;
+GRANT ALL ON FLOTILA TO XSLUKA00;
+GRANT ALL ON KAPITAN TO XSLUKA00;
+GRANT ALL ON LOD TO XSLUKA00;
+GRANT ALL ON PIRAT TO XSLUKA00;
+GRANT ALL ON PIRATSKE_CHARAKTERISTIKY TO XSLUKA00;
+GRANT ALL ON POSADKA TO XSLUKA00;
+GRANT ALL ON PRISTAV TO XSLUKA00;
+
+GRANT EXECUTE ON CREW_INFO TO XSLUKA00;
+GRANT EXECUTE ON CAPACITY_UPDATE TO XSLUKA00;
+
+/*GRANT ALL ON PIRAT_DETAILS_BY_POSADKA TO XSLUKA00;*/
+
+/*Materialized view*//*
+CREATE MATERIALIZED VIEW PIRAT_DETAILS_BY_POSADKA
+BUILD IMMEDIATE
+REFRESH COMPLETE ON DEMAND
+AS
+SELECT
+    p.ID_posadka,
+    COUNT(*) AS pocet_piratov,
+    AVG(p.Vek) AS priemerny_vek,
+    k.Roky_praxe AS kapitan_roky_praxe
+FROM XSLUKA00.PIRAT p
+LEFT JOIN XSLUKA00.KAPITAN k ON p.ID_pirata = k.ID_pirata
+GROUP BY p.ID_posadka, k.Roky_praxe;
+
+SELECT * FROM PIRAT_DETAILS_BY_POSADKA;*/
