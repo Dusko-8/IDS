@@ -12,7 +12,7 @@ drop table  PRISTAV;
 drop table  POSADKA;
 drop table  CHARAKTERISTIKY;
 drop sequence ID_POSADKY_seq;
-/*drop materialized view PIRAT_DETAILS_BY_POSADKA;*/
+drop materialized view PIRAT_DETAILS_BY_POSADKA;
 
 /*Table POSADKA is using required automatic sequence(starting 1000) combined with manual sequence*/
 /*Tables*/
@@ -274,6 +274,8 @@ VALUES (1000,2);
 
 
 /*Triggers*/
+/*After pirate is added to PIRAT table without specifying value of Pozicia,
+  value is set to 'upratovač'*/
 CREATE OR REPLACE TRIGGER PIRAT_POZ
     BEFORE INSERT ON PIRAT
     FOR EACH ROW
@@ -283,6 +285,10 @@ BEGIN
     END IF;
 END;
 
+
+/*After deleting from table LOD trigger will check if deleted ship was the only one in
+  FLOTILA, if it was then it will delete FLOTILA also.
+  It had to be compound trigger, becuase otherwise ships could not be counted(accesing table that is being modified)*/
 CREATE OR REPLACE TRIGGER DELETE_FLOTILA
     FOR DELETE ON LOD
     COMPOUND TRIGGER
@@ -311,6 +317,7 @@ END;
 
 
 /*Procedure*/
+/*Procedure prints out information about POSADKA, based on ID_posadky passed through argument*/
 CREATE OR REPLACE PROCEDURE CREW_INFO (pro_id_posadka IN POSADKA.ID_posadky%TYPE)
 AS
     CURSOR CURSOR_CREW IS
@@ -335,6 +342,9 @@ BEGIN
     END IF;
 END;
 
+/*After battle procedure sets ID_pristavu as a territory of winning ALIANCIA,
+  also port in which battle has taken place might be damaged so the procedure reduces
+  port capacity by (Pocet_strat % 5)*/
 CREATE OR REPLACE PROCEDURE CAPACITY_UPDATE(
     pro_aliance_id IN ALIANCIA.ID_aliancie%TYPE,
     pro_bitka_id IN BITKA.ID_bitky%TYPE
@@ -382,52 +392,7 @@ EXCEPTION
         RAISE;
 END;
 
-/*Selecting data from database*/
-
-/* 1. Which ships are currently anchored in port on Madagaskar ?*/
-SELECT LOD.ID_lode,LOD.Typ_lode
-FROM LOD JOIN PRISTAV on LOD.ID_pristavu = PRISTAV.ID_pristavu
-WHERE PRISTAV.Nazov_poloostrova = 'Madagaskar';
-
-/*2. Territory of which crew are ports ?*/
-SELECT PRISTAV.Nazov_poloostrova, POSADKA.ID_posadky, POSADKA.Jolly_roger
-FROM PRISTAV JOIN POSADKA on PRISTAV.ID_teritorium_posadky = POSADKA.ID_posadky;
-
-/*3. Which pirates are in Cool Guild guild alliance*/
-SELECT PIRAT.Meno, PIRAT.Prezyvka
-FROM PIRAT JOIN POSADKY_V_ALIANCII on PIRAT.ID_posadka = POSADKY_V_ALIANCII.ID_posadky
-JOIN ALIANCIA on POSADKY_V_ALIANCII.ID_aliancie = ALIANCIA.ID_aliancie
-WHERE ALIANCIA.Nazov = 'Cool Guild';
-
-/*4. What is average age of pirates in crews */
-SELECT  POSADKA.ID_posadky, AVG(PIRAT.Vek) AS "Average age"
-FROM POSADKA JOIN PIRAT on POSADKA.ID_posadky = PIRAT.ID_posadka
-GROUP BY POSADKA.ID_posadky;
-
-/*5. How many ships are in fleets */
-SELECT FLOTILA.ID_Flotily, COUNT(LOD.ID_Lode) AS "Number of ships"
-FROM FLOTILA JOIN LOD on FLOTILA.ID_flotily = LOD.ID_flotily
-GROUP BY FLOTILA.ID_Flotily;
-
-/*6. Which pirates have eye patch as a characteristic */
-SELECT PIRAT.Meno, PIRAT.Prezyvka
-FROM PIRAT
-WHERE EXISTS(
-    SELECT CHARAKTERISTIKY.Nazov FROM CHARAKTERISTIKY
-    JOIN PIRATSKE_CHARAKTERISTIKY on CHARAKTERISTIKY.ID_charakteristiky = PIRATSKE_CHARAKTERISTIKY.ID_charakteristiky
-    WHERE PIRAT.ID_pirata = PIRATSKE_CHARAKTERISTIKY.ID_pirata
-    AND CHARAKTERISTIKY.Nazov = 'Páska cez oko');
-
-/*7. Which crews were in battles, where number of casualties was greater then 100 */
-SELECT * FROM POSADKA
-WHERE POSADKA.ID_posadky IN (
-    SELECT POSADKY_V_ALIANCII.ID_posadky FROM POSADKY_V_ALIANCII
-    JOIN ALIANCIE_V_BITKE on POSADKY_V_ALIANCII.ID_aliancie = ALIANCIE_V_BITKE.ID_aliancie
-    JOIN BITKA on ALIANCIE_V_BITKE.ID_bitky = BITKA.ID_bitky
-    WHERE BITKA.Pocet_strat > 100
-    );
-
-/**/
+/*Select use case for capacity of ship*/
 WITH lod_info AS (
 SELECT l.ID_lode,l.Typ_lode,
 CASE
@@ -443,6 +408,7 @@ FROM lod_info li;
 /*Trigger 1 - adding a pirate without position*/
 INSERT INTO PIRAT (ID_posadka, rodne_cislo, Meno, Prezyvka, Farba_brady, Vek)
 VALUES(1000, '930101/1234', 'Rudo', 'Sedivy', 'Čierna', 20);
+SELECT * FROM PIRAT WHERE Meno = 'Rudo' and Prezyvka = 'Sedivy';
 
 /*Trigger 2 - deleting only ship in fleet -> fleet is deleted too*/
 INSERT INTO FLOTILA (ID_posadka, ID_div_kapitana)
@@ -459,13 +425,15 @@ CALL CREW_INFO(1);
 /*Capacity update of port*/
 CALL CAPACITY_UPDATE(1,1);
 
+
+/*Explain plan prints out how many ships are anchored in which ports*/
 EXPLAIN PLAN FOR SELECT Nazov_poloostrova, COUNT(*)
 FROM PRISTAV JOIN LOD on PRISTAV.ID_pristavu = LOD.ID_pristavu
 GROUP BY Nazov_poloostrova
 ORDER BY Nazov_poloostrova DESC;
 
 SELECT * from table(dbms_xplan.display());
-
+/*By creating index on ID_pristavu in table LOD, accessing full table is not needed so query is faster and cost is smaller*/
 CREATE INDEX ix_polo ON LOD(ID_pristavu);
 
 EXPLAIN PLAN FOR SELECT Nazov_poloostrova, COUNT(*)
@@ -475,24 +443,23 @@ ORDER BY Nazov_poloostrova DESC;
 
 SELECT * from table(dbms_xplan.display());
 
-GRANT ALL ON ALIANCIA TO XSLUKA00;
-GRANT ALL ON ALIANCIE_V_BITKE TO XSLUKA00;
-GRANT ALL ON BITKA TO XSLUKA00;
-GRANT ALL ON CHARAKTERISTIKY TO XSLUKA00;
-GRANT ALL ON FLOTILA TO XSLUKA00;
-GRANT ALL ON KAPITAN TO XSLUKA00;
-GRANT ALL ON LOD TO XSLUKA00;
-GRANT ALL ON PIRAT TO XSLUKA00;
-GRANT ALL ON PIRATSKE_CHARAKTERISTIKY TO XSLUKA00;
-GRANT ALL ON POSADKA TO XSLUKA00;
-GRANT ALL ON PRISTAV TO XSLUKA00;
+GRANT ALL ON XMAHUT01.ALIANCIA TO XSLUKA00;
+GRANT ALL ON XMAHUT01.ALIANCIE_V_BITKE TO XSLUKA00;
+GRANT ALL ON XMAHUT01.BITKA TO XSLUKA00;
+GRANT ALL ON XMAHUT01.CHARAKTERISTIKY TO XSLUKA00;
+GRANT ALL ON XMAHUT01.FLOTILA TO XSLUKA00;
+GRANT ALL ON XMAHUT01.KAPITAN TO XSLUKA00;
+GRANT ALL ON XMAHUT01.LOD TO XSLUKA00;
+GRANT ALL ON XMAHUT01.PIRAT TO XSLUKA00;
+GRANT ALL ON XMAHUT01.PIRATSKE_CHARAKTERISTIKY TO XSLUKA00;
+GRANT ALL ON XMAHUT01.POSADKA TO XSLUKA00;
+GRANT ALL ON XMAHUT01.PRISTAV TO XSLUKA00;
 
-GRANT EXECUTE ON CREW_INFO TO XSLUKA00;
-GRANT EXECUTE ON CAPACITY_UPDATE TO XSLUKA00;
+GRANT EXECUTE ON XMAHUT01.CREW_INFO TO XSLUKA00;
+GRANT EXECUTE ON XMAHUT01.CAPACITY_UPDATE TO XSLUKA00;
 
-/*GRANT ALL ON PIRAT_DETAILS_BY_POSADKA TO XSLUKA00;*/
-
-/*Materialized view*//*
+/*Materialized view*/
+/*View is accessing tables PIRAT and KAPITAN, prints out details about pirates based on Posadka*/
 CREATE MATERIALIZED VIEW PIRAT_DETAILS_BY_POSADKA
 BUILD IMMEDIATE
 REFRESH COMPLETE ON DEMAND
@@ -506,4 +473,6 @@ FROM XSLUKA00.PIRAT p
 LEFT JOIN XSLUKA00.KAPITAN k ON p.ID_pirata = k.ID_pirata
 GROUP BY p.ID_posadka, k.Roky_praxe;
 
-SELECT * FROM PIRAT_DETAILS_BY_POSADKA;*/
+SELECT * FROM PIRAT_DETAILS_BY_POSADKA;
+
+GRANT ALL ON XMAHUT01.PIRAT_DETAILS_BY_POSADKA TO XSLUKA00;
